@@ -3,11 +3,14 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import threading
 import unittest
-
 from login_probe.client import (
-    FAILURE_MESSAGE, Outcome,
+    FAILURE_MESSAGE, 
+    MAX_RESPONSE_BYTES, 
+    LoginClient, 
+    Outcome,
     classify_response,
 )
+from login_probe.rate_limit import run_probe
 
 # RESPONSE CLASSIFICATION 
 FAILURE = json.dumps({
@@ -106,6 +109,62 @@ def login_server(responses):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+class ProbeIntegrationTests(unittest.TestCase):
+    def run_local_probe(self, url, attempts=5):
+        return run_probe(
+            LoginClient(url), "test@example.test", "deliberately-wrong",
+            max_attempts=attempts, delay_seconds=0,
+        )
+
+    def test_no_limiter_uses_exact_request_budget_and_correct_payload(self):
+        with login_server([(401, FAILURE, {})]) as (url, received):
+            report = self.run_local_probe(url, attempts=3)
+
+        self.assertEqual(len(received), 3)
+        self.assertEqual(report.failure_count, 3)
+        self.assertEqual(received[0], (
+            "/api/auth/login",
+            {"email": "test@example.test", "password": "deliberately-wrong"},
+            "application/json",
+        ))
+
+    def test_stops_at_first_429_and_records_retry_after(self):
+        responses = [(401, FAILURE, {}), (429, b"", {"Retry-After": "60"})]
+        with login_server(responses) as (url, received):
+            report = self.run_local_probe(url) #attempts are default 5
+
+        self.assertEqual(len(received), 2) #only received 2 attempts, since i got a 429
+        self.assertEqual(report.failure_count, 1)
+        self.assertEqual(report.last_outcome, Outcome.THROTTLED)
+        self.assertEqual(report.attempts[-1].observation.retry_after, "60")
+
+    def test_stops_immediately_on_success_and_does_not_retain_token(self):
+        with login_server([(200, SUCCESS, {})]) as (url, received):
+            report = self.run_local_probe(url) 
+
+        self.assertEqual(len(received), 1)
+        self.assertEqual(report.last_outcome, Outcome.SUCCESS)
+        self.assertNotIn("secret-jwt", repr(report))
+
+    def test_redirects_are_not_followed(self):
+        with login_server([(302, b"", {"Location": "/somewhere-else"})]) as (url, received):
+            report = self.run_local_probe(url)
+
+        self.assertEqual(len(received), 1)
+        self.assertEqual(report.last_outcome, Outcome.UNEXPECTED)
+
+    def test_server_errors_stop_without_retries(self):
+        with login_server([(500, FAILURE, {})]) as (url, received):
+            self.run_local_probe(url)
+
+        self.assertEqual(len(received), 1)
+
+    def test_oversized_response_is_inconclusive(self):
+        with login_server([(200, b"x" * (MAX_RESPONSE_BYTES + 1), {})]) as (url, received):
+            report = self.run_local_probe(url)
+        self.assertEqual(report.last_outcome, Outcome.UNEXPECTED)
+        self.assertEqual(len(received), 1)
 
 if __name__ == "__main__":
     unittest.main()
