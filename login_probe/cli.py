@@ -5,9 +5,10 @@ from getpass import getpass
 import math
 import os
 import sys
+import shutil
 
 from .client import LoginClient, Outcome
-from .rate_limit import run_probe
+from .rate_limit import ProbeReport, run_probe
 
 
 DEFAULT_URL = "http://localhost:8080/api/auth/login"
@@ -48,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Builds and returns the parser for running the tool."""
     parser = argparse.ArgumentParser(
         description="Tool for observing if there is rate limiting implemented at a login endpoint within some amount of attempts. " \
-        "Intended to be used with a dedicated test accound and an incorrect password. " \
+        "Intended to be used with a dedicated test account and an incorrect password. " \
         "Exit codes: 0 (rate limiting observed), 1 (attempts exhausted, rate limiting not observed), 2 (unexpected end to test; accidental successful login, unexpected response, or network error)."
     )
     parser.add_argument("--url", default=DEFAULT_URL, help=f"url of login endpoint (default: {DEFAULT_URL})")
@@ -67,6 +68,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="read the incorrect test password from this environment variable; otherwise prompt privately",
     )
     return parser
+
+def format(report : ProbeReport) -> str:
+    """Function for building a formatted string of a ProbeReport. 
+    Used to print the result of a probe into the terminal."""
+    lines = []
+
+    # Info about probe
+    width = shutil.get_terminal_size().columns
+    info_line="PROBE REPORT".center(width, "-")
+    attemps_line=f"Requests made: {len(report.attempts)}"
+    delay_line=f"Delay between each request (s): {report.delay_seconds}"
+    lines.append(info_line)
+    lines.append(attemps_line)
+    lines.append(delay_line)
+
+    # Build summaries of the attempt observations
+    for attempt in report.attempts: 
+        attempt_summary = []
+        attempt_summary.append("\t" + f"Login Attempt Number {attempt.number}:")
+        attempt_summary.append("\t\t" + "Outcome: " + str(attempt.observation.outcome))
+        attempt_summary.append("\t\t" + "Response status code: " + str(attempt.observation.status))
+        attempt_summary.append("\t\t" + "Retry-After header from response: " + str(attempt.observation.retry_after))
+        attempt_summary.append("\t\t" + "Time to get response (ms): " + str(attempt.observation.duration_ms))
+        attempt_summary.append("\t\t" + "Details about this attempt: " + attempt.observation.detail)
+        lines.append(os.linesep.join(attempt_summary)) 
+
+    lines.append("".center(width, "-"))
+
+    return os.linesep.join(lines)
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
@@ -97,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
         print("\nProbe interrupted; the final request may have reached the server. No conclusion produced.", file=sys.stderr)
         return 130
 
-    print(report.__str__) # TODO: make a method for formatting the report nicely...
+    print(format(report))
     
     if report.last_outcome is Outcome.THROTTLED: # Rate limiting observed within request budget
         return 0
