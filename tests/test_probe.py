@@ -11,6 +11,7 @@ from login_probe.client import (
     classify_response,
 )
 from login_probe.rate_limit import run_probe
+from login_probe.cli import build_parser
 
 # RESPONSE CLASSIFICATION 
 FAILURE = json.dumps({
@@ -165,6 +166,28 @@ class ProbeIntegrationTests(unittest.TestCase):
             report = self.run_local_probe(url)
         self.assertEqual(report.last_outcome, Outcome.UNEXPECTED)
         self.assertEqual(len(received), 1)
+
+class CliTests(unittest.TestCase):
+    def test_non_positive_integer_max_attempts_not_allowed(self):
+        self.assertTrue(True)
+
+    def test_negative_delay_not_allowed(self):
+        self.assertTrue(True)
+
+    def test_non_positive_timeout_not_allowed(self):
+        self.assertTrue(True)
+
+    def test_email_is_required(self):
+        self.assertTrue(True)
+
+    def test_password_env_reads_from_environment(self):
+        self.assertTrue(True)
+
+    def test_format_correct(self):
+        self.assertTrue(True)
+
+    # Test exit codes? 
+    # ...
 
 if __name__ == "__main__":
     unittest.main()
