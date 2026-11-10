@@ -123,7 +123,6 @@ class LoginClient:
                 },
             )
             response = connection.getresponse()
-            duration = perf_counter() - started
             status = response.status
             # Only preserve the one header needed for iteration 1. Raw bodies,
             # cookies, JWTs, and arbitrary server messages never enter a report.
@@ -145,12 +144,12 @@ class LoginClient:
                         if outcome == Outcome.UNEXPECTED else ""
                     )
         except (OSError, http.client.HTTPException) as error:
-            duration = (perf_counter() - started)
             outcome = Outcome.NETWORK_ERROR
             # Exception text can include server-controlled data. Keep only its
             # type, and do not retry: the server may have counted this request.
             detail = f"Request failed ({type(error).__name__})."
         finally:
+            duration = perf_counter() - started
             connection.close()
 
         return Observation(

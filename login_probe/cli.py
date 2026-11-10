@@ -89,7 +89,7 @@ def format(report : ProbeReport) -> str:
         attempt_summary.append("\t" + f"Login Attempt Number {attempt.number}:")
         attempt_summary.append("\t\t" + "Outcome: " + str(attempt.observation.outcome))
         attempt_summary.append("\t\t" + "Response status code: " + str(attempt.observation.status))
-        attempt_summary.append("\t\t" + "Retry-After header from response: " + str(attempt.observation.retry_after))
+        attempt_summary.append("\t\t" + "Retry-After header from response: " + ascii(attempt.observation.retry_after))
         attempt_summary.append("\t\t" + "Time to get response (ms): " + str(attempt.observation.duration_ms))
         attempt_summary.append("\t\t" + "Details about this attempt: " + attempt.observation.detail)
         lines.append(os.linesep.join(attempt_summary)) 
